@@ -1,24 +1,25 @@
 package com.mygdx.game.model;
 
 import com.badlogic.gdx.*;
-import com.badlogic.gdx.graphics.g2d.Sprite;
-import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.Input.Keys;
 import com.badlogic.gdx.physics.box2d.*;
+import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.Stage;
+import com.badlogic.gdx.scenes.scene2d.ui.Window;
 import com.badlogic.gdx.utils.Array;
-import com.badlogic.gdx.utils.ArrayMap;
 import com.mygdx.game.*;
 import com.mygdx.game.entities.AbstractDynamicObject;
-import com.mygdx.game.entities.Player;
 import com.mygdx.game.entities.NPC;
-import com.mygdx.game.maps.MainTileMap;
+import com.mygdx.game.entities.Player;
+import com.mygdx.game.levels.Level;
+import com.mygdx.game.screens.GameScreen;
+import com.mygdx.game.screens.gui.DialogButtons;
 import com.mygdx.game.screens.gui.DialogWindow;
 import com.mygdx.game.screens.gui.Display;
 import com.mygdx.game.util.Constants;
+import com.mygdx.game.util.JsonTest;
 import com.mygdx.game.util.MapBodyManager;
-
 
 /**
  * Created by Ian on 12/21/2014.
@@ -27,214 +28,105 @@ import com.mygdx.game.util.MapBodyManager;
  * to the other modules as well as control input
  *
  */
+@SuppressWarnings("NonJREEmulationClassesInClientCode")
 public class WorldController implements InputProcessor {
 
     private static final String TAG = WorldController.class.getName();
 
-
-    public int score;
     public Level level;
-    public int lives;
-
-
-    //not bein used
-    public MainTileMap mainMap;
-    //public World world;
     public MapBodyManager bodyManager;
 
-    /*
-    * Creates the camera helper, a utililty class for camera manipulation
-    * */
+    /**
+    * Creates the camera helper, a utility class for camera manipulation
+    */
     public CameraHelper cameraHelper;
 
-    /*
+    /**
     * The class for displaying the UI
     * Is placed in controller so input has access
-    * */
+    */
     public Display display;
     public DialogWindow dialogWindow;
+    private DialogButtons DB;
+    private Stage stage;
+    private JsonTest jsonTest;
 
-    /*
+    /**
     * Actor initialization
     * Dude is only active sprite 3/4/2015
-    * */
+    */
+    public Array<AbstractDynamicObject> actors;
     public Player player;
-    public NPC npc;
+    private NPC target;
+    /** For collisions */
+    private Fixture fixtureA;
+    private Fixture fixtureB;
 
-    public Sprite[] spriteGroup;
-    public int selectedSprite;
+    private boolean visible;
+    private GameScreen gameScreen;
 
-    /*
-    * Environment intitialization
-    * Not being used
-    * */
-    public Sprite[] groundGroup;
-
-
-    /*
+    /**
     * Default constructor
-    * */
-    public WorldController (Stage stage) {
+    */
+    public WorldController (Stage stage, GameScreen gameScreen, Level level) {
+        this.stage = stage;
+        this.gameScreen = gameScreen;
+        this.level = level;
         init(stage);
     }
 
-
-    private Stage stage;
-
-    public Stage getStage(){
-        return stage;
-    }
-
-    /*
+    /**
     * Build class
-    * */
+    */
     private void init(Stage stage) {
-
-        this.stage = stage;
         Gdx.input.setInputProcessor(this);
-        //world = new World(new Vector2(0,0),true);
-        /*
-        * Body manager to be used for static collisions
-        * second argument being 16 is because the game uses a unit/tile scale of 1/16f
-        * */
+
         bodyManager = new MapBodyManager(GameInstance.getInstance().world,16, null, Application.LOG_DEBUG);
 
-
+        actors = level.getActors();
         cameraHelper = new CameraHelper();
-        cameraHelper.setPosition(Constants.GAME_WORLD / 2, Constants.GAME_WORLD/2);
+        cameraHelper.setPosition(Constants.GAME_WORLD / 2, Constants.GAME_WORLD / 2);
 
-        //Game info is set in Constants class
-        lives = Constants.LIVES_START;
+        if (actors.size > 1)
+            jsonTest = ((NPC) actors.get(1)).getJsonTest();
 
-        /*Initiate everything*/
+        /**Initiate everything*/
         initActors();
         initUI(stage);
-        //stage.addActor(dialogWindow.makeWindow());
-        bodyManager.createPhysics(Assets.instance.mainMap.map, "Obstacles");
+
+        bodyManager.createPhysics(level.getMap(), "Obstacles");
         createCollisionListener();
     }
 
-    /*
-    * Initiate Tiled Map
-    * */
-    public void initMap(){
-        mainMap = new MainTileMap();
-    }
-
+    public void initInput() {  Gdx.input.setInputProcessor(this); }
 
     public void initUI(Stage stage){
-        display = new Display();
+        visible = false;
+        display = new Display(stage);
+        //dialog = new Display();
         dialogWindow = new DialogWindow();
+        DB = new DialogButtons(stage, this);
         stage.addActor(display.makeWindow());
         stage.addActor(dialogWindow.makeWindow());
     }
 
-    /*
-    * Initiate level loader
-    * TODO change to load tiled maps
-
-    private void initLevel () {
-        score = 0;
-        level = new Level(Constants.LEVEL_01);
-    }
-
-    * */
-
-
-    /*
-    * Create actors, for now specifically the dude actor
-    * */
+    /**
+    * Create actors
+    */
     private void initActors(){
-        player = new Player(0);
-        npc = new NPC(1);
-        npc.setRegion(Assets.instance.npc.body);
-        npc.getBody().setTransform(npc.position.x + npc.getWidth(), npc.position.y + npc.getHeight(), 0);
-        player.setRegion(Assets.instance.dudeAsset.body);
-        player.getBody().setTransform(player.position.x + player.getWidth(), player.position.y + player.getHeight(), 0);
+        for (AbstractDynamicObject a : actors){
+            if (a.getID() == 0)                                             /** If it is player */
+                a.getBody().setTransform(a.position.x + a.getWidth(), a.position.y + a.getHeight(), 0);
+            else if (a.getID() < 100)                                       /** If its an NPC */
+                a.getBody().setTransform(a.position.x + a.getWidth(), a.position.y + a.getHeight(), 0);
+            else                                                            /** For sensors */
+                a.getBody().setTransform(a.position.x, a.position.y, 0);
+        }
+
+        player = ((Player) actors.get(0));
     }
 
-
-     /*
-    * Create model and needed resources
-    * This is the earliest attemp at game stuff
-    * Uncomment code in other classes to see what it does
-    * */
-    private void initTestObjects(){
-
-        //array to hold actors
-        spriteGroup = new Sprite[5];
-
-        //array to hold environment
-        groundGroup = new Sprite[20];
-
-        //add textures
-        ArrayMap<String, TextureRegion> regions = new ArrayMap<String, TextureRegion>();
-        regions.put("face", Assets.instance.dudeAsset.body);
-        regions.put("ground", Assets.instance.ground.ground);
-
-
-        /*
-        * Go through the ground objects
-        * */
-        for(int i = 0; i < groundGroup.length; i++){
-            Sprite spr = new Sprite(regions.get("ground"));
-
-            int x = 0;
-            int y = 0;
-
-            spr.setSize(1, 1);
-            spr.setScale(1, 1);
-
-            if(i < 5){
-                y = 0;
-            }
-
-            if(i < 9){
-                y = 1;
-            }
-
-            spr.setPosition(i, y);
-            groundGroup[i] = spr;
-
-        }
-
-
-        /*
-        * Go through sprites and make everything which is needed
-        * */
-        for (int i = 0; i < spriteGroup.length; i++) {
-            Sprite spr = new Sprite(regions.get("face"));
-
-            // Define sprite size to be 1m x 1m in game world
-            //TODO learn more about using m as unit of space in game world
-            spr.setSize(1, 1);
-
-            spr.setScale(1, 1);
-
-            // Set origin to sprite's center
-            spr.setOrigin(spr.getWidth() / 2.0f, spr.getHeight() / 2.0f);
-
-            // Calculate random position for sprite
-            float randomX = MathUtils.random(-2.0f, 2.0f);
-            float randomY = MathUtils.random(-2.0f, 2.0f);
-            spr.setPosition(randomX, randomY);
-
-            // Put new sprite into array
-            spriteGroup[i] = spr;
-        }
-
-
-
-        // Set first sprite as selected one
-        selectedSprite = 0;
-     }
-
-
-
-
-
-
-    /*
+    /**
     * This method is called constantly and updates the model and view
     *
     * Important note about handleDebugInput()
@@ -242,71 +134,24 @@ public class WorldController implements InputProcessor {
     * input has been processed before rendering this class needs to be
     * called first to ensure user input is handled BEFORE logic is executed
     * ORDER IS IMPORTANT
-    * */
+    */
     public void update (float deltaTime) {
 
-        //updateTestObjects(deltaTime);
-
-
-        // Create an array to be filled with the bodies
-// (better don't create a new one every time though)
-        Array<Body> bodies = new Array<Body>();
-// Now fill the array with all bodies
-        GameInstance.getInstance().world.getBodies(bodies);
-
-        for (Body b : bodies) {
-            // Get the body's user data - in this example, our user
-            // data is an instance of the Entity class
-            //Entity e = (Entity) b.getUserData();
-
-            if (player != null) {
-                // Update the entities/sprites position and angle
-                player.setPosition(b.getPosition().x, b.getPosition().y);
-                // We need to convert our angle from radians to degrees
-                //dude.setRotation(MathUtils.radiansToDegrees * b.getAngle());
-            }
-        }
-
-        int numContacts = GameInstance.instance.world.getContactCount();
-        if (numContacts > 0) {
-            //Gdx.app.log("contact", "start of contact list");
-            for (Contact contact : GameInstance.instance.world.getContactList()) {
-                Fixture fixtureA = contact.getFixtureA();
-                Fixture fixtureB = contact.getFixtureB();
-                //Gdx.app.log("contact", "between " + fixtureA.toString() + " and " + fixtureB.toString());
-            }
-            //Gdx.app.log("contact", "end of contact list");
-        }
-
         handleDebugInput(deltaTime);
-        //dude.getBody().setTransform(dude.position.x + dude.getWidth(), dude.position.y + dude.getHeight(), 0);
+
         cameraHelper.update(deltaTime);
-        //Gdx.app.debug(TAG, dude.getVelocity().toString());
-        display.setText(player.getVelocity().toString());
-        display.update();
-        dialogWindow.update();
-        player.update(deltaTime);
-        npc.update(deltaTime);
-        npc.update(deltaTime);
-        GameInstance.getInstance().world.step(1/45f, 2, 6);
-    }
+        
+        display.setText(cameraHelper.getPosition().toString());
 
+        //array added here to facilitate more actors
+        for(AbstractDynamicObject dudes : actors){
+            dudes.behavior(dudes.getID(), deltaTime);
+            dudes.update(deltaTime);
+        }
+        stage.act();
+        stage.draw();
 
-    /*
-    * Updates the local model from earlier code
-    * */
-    private void updateTestObjects(float deltaTime) {
-        // Get current rotation from selected sprite
-        //float rotation = spriteGroup[selectedSprite].getRotation();
-        // Rotate sprite by 90 degrees per second
-        //rotation += 90 * deltaTime;
-        // Wrap around at 360 degrees
-        // TODO ???
-        //rotation %= 360;
-        // Set new rotation value to selected sprite
-        //spriteGroup[selectedSprite].setRotation(rotation);
-
-
+        GameInstance.getInstance().world.step(1 / 45f, 2, 6);
     }
 
     private void createCollisionListener() {
@@ -314,28 +159,15 @@ public class WorldController implements InputProcessor {
 
             @Override
             public void beginContact(Contact contact) {
-                Fixture fixtureA = contact.getFixtureA();
-                Fixture fixtureB = contact.getFixtureB();
+                fixtureA = contact.getFixtureA();
+                fixtureB = contact.getFixtureB();
                 Gdx.app.log("beginContact", "between " + fixtureA.toString() + " and " + fixtureB.toString());
-
-
-
-                if(fixtureA.getBody().getUserData() != null && fixtureB.getBody().getUserData() != null){
-
-                }
-
-
-                /*if(fixtureA.getBody().getUserData() != null && fixtureB.getBody().getUserData() != null){
-                    Gdx.app.debug("Contact Entities", fixtureA.getBody().getUserData().getClass().toString() +
-                        " and " + fixtureB.getBody().getUserData().getClass().toString());
-                }*/
-
             }
 
             @Override
             public void endContact(Contact contact) {
-                Fixture fixtureA = contact.getFixtureA();
-                Fixture fixtureB = contact.getFixtureB();
+                fixtureA = contact.getFixtureA();
+                fixtureB = contact.getFixtureB();
                 Gdx.app.log("endContact", "between " + fixtureA.toString() + " and " + fixtureB.toString());
             }
 
@@ -346,35 +178,49 @@ public class WorldController implements InputProcessor {
             @Override
             public void postSolve(Contact contact, ContactImpulse impulse) {
             }
-
         });
     }
 
-
-    /*
+    /**
     * Enables all kinds of awesome things that we can control when
     * used in conjunction with the CameraHelper class
-    * */
+    */
     private void handleDebugInput (float deltaTime) {
         if (Gdx.app.getType() != Application.ApplicationType.Desktop) return;
 
-        float inputForce = 20;
-
-        float sprMoveSpeed = 10 * deltaTime;
-        if(Gdx.input.isKeyPressed(Keys.W)) player.moveCharacter(1);
-        if(Gdx.input.isKeyPressed(Keys.A)) player.moveCharacter(2);
-        if(Gdx.input.isKeyPressed(Keys.S)) player.moveCharacter(0);
-        if(Gdx.input.isKeyPressed(Keys.D)) player.moveCharacter(3);
+        if(Gdx.input.isKeyPressed(Keys.W)) {
+            player.moveCharacter(1);
+            //player.setAnimState(2);
+        }
+        if(Gdx.input.isKeyPressed(Keys.A)) {
+            player.moveCharacter(2);
+            //player.setAnimState(0);
+        }
+        if(Gdx.input.isKeyPressed(Keys.S)) {
+            player.moveCharacter(0);
+            //player.setAnimState(1);
+        }
+        if(Gdx.input.isKeyPressed(Keys.D)) {
+            player.moveCharacter(3);
+            //player.setAnimState(3);
+        }
 
         if(Gdx.input.isKeyPressed(Keys.F)){
             float angle = 1 * 90 * MathUtils.degRad;
             player.getBody().setTransform(player.getBody().getPosition(), angle);
+            System.out.println("SPEED: " + player.body.getLinearVelocity().x + player.body.getLinearVelocity().y);
         }
 
+     /*
+    * Test method for changing screens
 
-
+        if(Gdx.input.isKeyPressed(Keys.N)) {
+            initPhone(new Stage());
+        }
+*/
 
         // Camera Controls (move)
+
         float camMoveSpeed = 5 * deltaTime;
         float camMoveSpeedAccelerationFactor = 5;
         if (Gdx.input.isKeyPressed(Input.Keys.SHIFT_LEFT)) camMoveSpeed *=
@@ -390,7 +236,6 @@ public class WorldController implements InputProcessor {
         if (Gdx.input.isKeyPressed(Input.Keys.BACKSPACE))
             cameraHelper.setPosition(0, 0);
 
-
         // Camera Controls (zoom)
         float camZoomSpeed = 1 * deltaTime;
         float camZoomSpeedAccelerationFactor = 5;
@@ -403,34 +248,19 @@ public class WorldController implements InputProcessor {
         if (Gdx.input.isKeyPressed(Keys.SLASH)) cameraHelper.setZoom(1);
     }
 
-
-
-    /*
+    /**
     * Uses CameraHelper to control the camera position
-    * */
+    */
     public void moveCamera (float x, float y) {
         x += cameraHelper.getPosition().x;
         y += cameraHelper.getPosition().y;
 
-
-
         cameraHelper.setPosition(x, y);
     }
 
-
-    /*
-    * Method to actually move a game object
-    * TODO fold this and other sprite methods to a new class
-    * */
-    private void moveSelectedSprite (float x, float y) {
-        spriteGroup[selectedSprite].translate(x, y);
-    }
-
-
-    /*
-    * Inputs
-    * */
-
+    /**
+    * InputProcessor Inputs
+    */
     @Override
     public boolean keyDown(int keycode) {
         return false;
@@ -440,45 +270,165 @@ public class WorldController implements InputProcessor {
     public boolean keyUp (int keycode) {
         // Reset game world
         if (keycode == Keys.R) {
-            //init();
-            Gdx.app.debug(TAG, "Game world resetted");
+            init(stage);
+            Gdx.app.debug(TAG, "Game world reset");
+            return true;
         }
 
         //change text
-        if (keycode == Keys.B){
-            display.setText(player.randomText());
+        else if (keycode == Keys.B){
+            dialogWindow.setText(player.randomText());
+            return true;
 
         }
 
+        else if (keycode == Keys.V){
+            dialogWindow.hide();
+            return true;
 
-        // Select next sprite
+        }
+
+        //@TODO Make this a hash?
+        /** This is now the action key */
         else if (keycode == Keys.SPACE) {
-            selectedSprite = (selectedSprite + 1) % spriteGroup.length;
+            Contact contact;
+            boolean eventFound = false;
+            int i = 0;
 
-            // Update camera's target to follow the currently
-            // selected sprite
-            if (cameraHelper.hasTarget()) {
-                cameraHelper.setTarget(spriteGroup[selectedSprite]);
-            }
+            dialogWindow.setText("What a pretty day in MorrisTown :)");     /** For hitting space with no contacts */
 
-            Gdx.app.debug(TAG, "Sprite #" + selectedSprite + " selected");
+            while (!eventFound && i < GameInstance.instance.world.getContactCount()) {      /** This is a while loop and not for so we stop looking for contacts */
+                contact = GameInstance.instance.world.getContactList().get(i);              /** after finding the first relevant contact (relevant makes eventFound = true) */
+                fixtureA = contact.getFixtureA();
+                fixtureB = contact.getFixtureB();
+
+                if (fixtureB.getBody() == player.getBody())
+                    swapFixtures();
+                if (fixtureA.getBody() == player.getBody()) {
+                    if (!dialogWindow.isHidden())                /** Displaying the dialog window. */
+                        dialogWindow.hide();
+
+                    for (AbstractDynamicObject a : actors)              /** Checking to see if talking to an actor. */
+                        if (fixtureB.getBody() == a.getBody()) {
+                            eventFound = true;
+                            target = (NPC) a;
+                            dialogueStart();
+                        }
+                        if (!eventFound) {
+                            if (fixtureB.isSensor()){
+                                dialogWindow.setText("I'm at a sensor.");
+                                eventFound = true;
+                                commandWord((String) fixtureB.getBody().getUserData());
+                            }
+                            else /** For hitting space with a non contact entity */
+                                dialogWindow.setText("Nothing to do there :(");
+                        }
+
+//                    if (fixtureB.getBody() == actors.get(1).getBody()) {           /** Talking to NPC */
+//                        dialogWindow.setText("I'm talking to npc!");
+//                        eventFound = true;
+//                        gameScreen.pauseSwap();
+//                        stage.addActor(DB.makeWindow(DC.getArray(101)));
+//                    } else if (fixtureB.getBody() == actors.get(2).getBody()) {      /** Talking to NPC2 */
+//                        dialogWindow.setText("I'm talking to npc2!!");
+//                        eventFound = true;
+//                    } else if (fixtureB.getBody() == actors.get(3).getBody()) {  /** At blueHouseSensor */
+//                        dialogWindow.setText("I'm entering the blue house ! !");
+//                        eventFound = true;
+//                        changeLevels("blueHouse");
+//                }
+                }
+                i++;
             }
-            // Toggle camera follow
-            else if (keycode == Keys.ENTER) {
-                //cameraHelper.setTargetAbstract(cameraHelper.hasTarget() ? null : dude);
+            dialogWindow.update(stage);
+            DB.update(stage);
+        }
+
+
+        // Toggle camera follow
+        else if (keycode == Keys.ENTER) {
+            //cameraHelper.setTargetAbstract(cameraHelper.hasTarget() ? null : dude);
             cameraHelper.setTargetAbstract(player);
-                Gdx.app.debug(TAG, "Camera follow enabled: " +
-                        cameraHelper.hasTargetAbstract());
-            }
+            Gdx.app.debug(TAG, "Camera follow enabled: " +
+                    cameraHelper.hasTargetAbstract());
+            return true;
 
+        }
         return false;
     }
 
+    private Window window;
 
+    private void dialogueStart(){
+        gameScreen.pause();
 
+        target.setDialog();
+        for (Actor a : stage.getActors())
+            if (a.getName() != null)
+                if (a.getName().equals("DB")) {
+                    a.clear();
+                    a.remove();
+                }
+        window = DB.makeWindow(jsonTest.getDialogOptions());
+        stage.addActor(window);
+        dialogWindow.setText(jsonTest.getDialog());
+    }
 
+    public void updateDialog(int optionSelected){
+        if (jsonTest.getUpdatedDialogID(optionSelected) != -1) {
+            target.setDialogID(jsonTest.getUpdatedDialogID(optionSelected));
+            dialogueStart();
+        }
+        else {
+            DB.hide();
+            dialogWindow.hide();
+            window.remove();
+            gameScreen.pauseSwap();
+            initInput();
+        }
+    }
 
+    //@TODO explain what the fuck you're doing here, and maybe change it to something less cryptic.
+    private void commandWord(String c){
+        switch(c){
+            case "BRD":
+                changeLevels(1);
+                break;
+            case "door":
+                changeLevels(2);
+                break;
+            case "BLComputer":
+                gameScreen.pwGameSwap();
+                break;
+        }
+    }
 
+    private void changeLevels(int levelToChangeTo){
+        bodyManager.destroyPhysics();   /** Destroys all physics for structures */
+        while (actors.size != 0) {      /** Destroys the physics for the actors */
+            actors.pop().remove();
+        }
+        gameScreen.setLevel(levelToChangeTo);
+    }
+    /**
+     * Simple method to switch FixtureA and FixtureB.
+     */
+    private void swapFixtures(){
+        Fixture temp = fixtureA;
+        fixtureA = fixtureB;
+        fixtureB = temp;
+    }
+
+    public DialogWindow getDialog() {
+        return dialogWindow;
+    }
+    public Display getDisplay() {
+        return display;
+    }
+    public Stage getStage(){
+        return stage;
+    }
+    public Level getLevel(){ return level;}
 
     @Override
     public boolean keyTyped(char character) {
@@ -503,9 +453,12 @@ public class WorldController implements InputProcessor {
 
     @Override
     public boolean mouseMoved(int screenX, int screenY) {
-        return false;
+        if(stage.hit(screenX, screenY, true) != null)
+            visible = true;
+        else
+            visible = false;
+        return true;
     }
-
     @Override
     public boolean scrolled(int amount) {
         return false;

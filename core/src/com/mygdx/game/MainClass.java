@@ -1,3 +1,4 @@
+// Connor Tested asdsda
 package com.mygdx.game;
 
 import com.badlogic.gdx.Application;
@@ -7,32 +8,37 @@ import com.badlogic.gdx.Gdx;
 import com.mygdx.game.screens.MainMenu;
 
 public class MainClass extends Game {
-	@Override
-	public void create() {
+    private Game game;
 
-		Gdx.app.setLogLevel(Application.LOG_DEBUG);
+    public MainClass() {
+        game = this;
+    }
 
-		//Assets.load();
-		setScreen(new MainMenu(this));
+    public MainClass(Game game) {
+        this.game = game;
+    }
 
-	}
+    @Override
+    public void create() {
+        Gdx.app.setLogLevel(Application.LOG_DEBUG);
+        setScreen(new MainMenu(this));
+    }
 
-	public void render() {
-		super.render();
-	}
+    public void render() {
+        super.render();
+    }
 
-	public void dispose() {
+    public void dispose() {
+        super.dispose();
+        Gdx.app.exit();
+    }
 
-		super.dispose();
-		Gdx.app.exit();
-	}
+    public void resize(int width, int height) {
+    }
 
-	public void resize(int width, int height) {
-	}
+    public void pause() {
+    }
 
-	public void pause() {
-	}
-
-	public void resume() {
-	}
+    public void resume() {
+    }
 }
