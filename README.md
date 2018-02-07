@@ -1,15 +1,24 @@
-l# Security Game Git Readme
-### Update 4/15/2015
+# MorrisStation
 
-This is the most up to date version of the game yet in terms of comments and stuff. Nearly every class has been completely commented so that the entire program flow should be fairly readable.
+MorrisStation is a cybersecurity adventure game, meant to help middle school aged students learn the basics of cybersecurity.
+It uses the LibGDX framework to support cross platform deployment.
 
-As before is is recommended that you build a new libgdx project with the project builder. Your setup should look like this:
+## System Requirements
+* Running
+  * Java Runtime
+* Building
+  *  JDK 8
+  *  Gradle
 
-![Setup](http://i.imgur.com/sV1bt18.png)
+## Build
 
-*edit* to match the code change Game Class to: MainClass
-
-#Assets
-Previously there were no asset files in this repository but that is no longer the case. Assets files are no included. So long as your project has the android folder you should be able to just copy paste and get everything in there.
-
-
+To run from the command line:
+ gradlew desktop:run
+ 
+ To import into IntelliJ:
+  1. Import the build.gradle file inside MorrisStation folder
+  2. Use setting import project from gradlew
+  3. Set run configuration
+    * Use classpath of module: desktop_main
+    * Main class: com.mygdx.game.desktop.DesktopLauncher
+    * Working directory: /MorrisStation/core/assets
